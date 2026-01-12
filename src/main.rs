@@ -72,6 +72,19 @@ fn write_series_json(sample :&Sample, filename: &str) -> Result<()> {
    Ok(())
 }
 
+fn print_series(sample :&Sample) -> Result<()> {
+   for (i, ((phi_i, rho_i), ef_i)) in sample.phi.iter()
+       	   	    	    	      .zip(sample.rho.iter())
+				      .zip(sample.ef.iter())
+				      .enumerate() {
+       let xi:f64 = sample.x0 + (i as f64) * sample.dx; 
+       println!("X_i {xi:.6}, phi_i {:.3}, rho_i {:.3}, ef_i {:.3}",
+                *phi_i, *rho_i, *ef_i);
+   }
+   Ok(())
+}
+
+
 // could assert that the vectors are all the same length
 fn solvePotentialDirect(dx: f64, phi: &mut Vec<f64>, rho: &Vec<f64>) -> Result<()> {
    let ni: usize = phi.len();
@@ -114,6 +127,54 @@ fn solvePotentialDirect(dx: f64, phi: &mut Vec<f64>, rho: &Vec<f64>) -> Result<(
    Ok(())   
 }
 
+// want this to return a value indicating successful convergence
+fn solvePotentialGsSOR(dx: f64, phi: &mut Vec<f64>, rho: &Vec<f64>, max_iter: i32) -> Result<i32, String> {
+
+   let mut L2: f64 = 1e12;
+   let L2_conv: f64 = 1e-6;
+   let dx2: f64 = dx * dx;
+   let w: f64 = 1.4;  //make this a param?
+   let ni: usize = phi.len();
+
+   let found = {
+      let mut result = None;
+      
+      for iter in 0..max_iter {
+         phi[0] = 0.0;
+      	 phi[ni-1] = 0.0;
+
+         for i in 1..(ni-1) {
+            let g: f64 = 0.5 * (phi[i-1] + phi[i+1] + dx2 * rho[i] / EPS0);
+	    phi[i] = phi[i] + w * (g - phi[i]);
+         }
+
+         if iter % 50 == 0 {
+      	    let mut sum: f64 = 0.0;
+	    for i in 1..(ni-1) {
+	       let res: f64 = -rho[i]/EPS0 - (phi[i-1] - 2.0 * phi[i] + phi[i+1])/dx2;
+	       sum += res * res;
+	    }
+	    let L2: f64 = (sum/(ni as f64)).sqrt();
+	    if L2 < L2_conv {
+	       result = Some(iter);
+	       break;
+	    }
+	 }
+      }
+      result
+   };
+   match found {
+      Some(i) => {
+         println!("GS SOR solver converged after {i} iterations");
+	 Ok(i)
+      }
+      None => {
+         println!("GS SOR solver didn't converge, L2 residual {L2:.6}");
+	 Err("GS SOR didn't converge".into())
+      }
+   }
+}
+
 fn main() -> Result<()> {
     println!("Starting execution");
     let ni = 21;
@@ -126,9 +187,22 @@ fn main() -> Result<()> {
     let mut ef: Vec<f64> = vec![0.0; ni];
 
     solvePotentialDirect(dc, &mut phi, &rho)?;
-    
-    let s1 = Sample{x0: x0, dx: dc, phi: phi, rho: rho, ef: ef};
+    let s1 = Sample{x0: x0, dx: dc, phi: phi.clone(), rho: rho.clone(), ef: ef.clone()};
+    print_series(&s1);
 
+    // reset values for next sovler
+    phi = vec![0.0; ni];
+    rho = vec![QE*1e12; ni];
+    ef = vec![0.0; ni];
+    match solvePotentialGsSOR(dc, &mut phi, &rho, 1000) {
+       Ok(i) => {
+          let s1 = Sample{x0: x0, dx: dc, phi: phi.clone(), rho: rho.clone(), ef: ef.clone()};
+          print_series(&s1);
+       }
+       Err(s) => println!("{s}")
+    }
+
+    let s1 = Sample{x0: x0, dx: dc, phi: phi.clone(), rho: rho.clone(), ef: ef.clone()};
     write_json(&s1, "output.json")?;
     write_series_json(&s1, "output_series.json")?;
     println!("Done writing files");
