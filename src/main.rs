@@ -8,25 +8,53 @@ const QE: f64 = 1.602176565e-19;  // C, electron charge
 const EPS0: f64 = 8.85418782e-12; // C/V/m vac permiability
 const ME: f64 = 9.10938215e-31;   // kg electron mass
 
+
 #[derive(serde::Serialize)]
-struct Sample {
-       x0: f64,
-       dx: f64,
-       phi: Vec<f64>,
-       rho: Vec<f64>,
-       ef: Vec<f64>
+struct Cell {
+    x: f64,
+    phi: f64,
+    rho: f64,
+    ef: f64
 }
 
 #[derive(serde::Serialize)]
-struct SeriesElement {
-       x_i: f64,
-       phi_i: f64,
-       rho_i: f64,
-       ef_i: f64
+struct Field {
+    x0: f64,
+    dx: f64,
+    cells: Vec<Cell>
+}
+
+// Qs
+// Can you have optional arguments?
+impl Field {
+    fn new(n: usize, x0: f64, dx: f64, rho0: f64) -> Self {
+        let cells: Vec<Cell> = (0..n)
+            .map(|i| {
+                let x = x0 + i as f64 * dx;
+                Cell {
+                    x,
+                    phi: 0.0,
+                    rho: rho0,
+                    ef: 0.0
+                }
+            }).collect();
+        Self {x0:x0, dx:dx, cells:cells }
+    }
+
+    fn len(&self) -> usize {self.cells.len() }
+
+    // Assumes that x values remain unmodified
+    fn reset(&mut self, rho0: f64) {
+        for c in &mut self.cells {
+            c.phi = 0.0;
+            c.rho = rho0;
+            c.ef = 0.0;
+        }
+    }
 }
 
 // Will delete the contents of the file if it already exists
-fn write_json(sample :&Sample, filename: &str) -> Result<()> {
+fn write_field_to_json(field : &Field, filename : &str) -> Result<()> {
    let file = OpenOptions::new()
        .write(true)
        .create(true)
@@ -34,68 +62,34 @@ fn write_json(sample :&Sample, filename: &str) -> Result<()> {
        .open(filename)?;
        
    let mut writer = BufWriter::new(file);
-   let line = serde_json::to_string(sample)?;
+   let line = serde_json::to_string(field)?;
    writeln!(writer, "{}", line)?;
 
    writer.flush()?;
    Ok(())
+
 }
 
 
-// Will delete the contents of the file if it already exists
-
-// Potential improvements here: conversion to struct in order to encode json
-// might not be necessary...
-// some extra vars are created as well
-// could assert that the vectors are all the same length
-fn write_series_json(sample :&Sample, filename: &str) -> Result<()> {
-   let file = OpenOptions::new()
-       .write(true)
-       .create(true)
-       .truncate(true)
-       .open(filename)?;
-       
-   let mut writer = BufWriter::new(file);
-
-   for (i, ((phi_i, rho_i), ef_i)) in sample.phi.iter()
-       	   	    	    	      .zip(sample.rho.iter())
-				      .zip(sample.ef.iter())
-				      .enumerate() {
-       let s = SeriesElement { x_i: sample.x0 + (i as f64) * sample.dx,
-       	       		       phi_i: *phi_i,
-			       rho_i: *rho_i,
-			       ef_i: *ef_i };
-       let line = serde_json::to_string(&s)?;
-       writeln!(writer, "{}", line)?;
-   }
-   writer.flush()?;
-   Ok(())
-}
-
-fn print_series(sample :&Sample) -> Result<()> {
-   for (i, ((phi_i, rho_i), ef_i)) in sample.phi.iter()
-       	   	    	    	      .zip(sample.rho.iter())
-				      .zip(sample.ef.iter())
-				      .enumerate() {
-       let xi:f64 = sample.x0 + (i as f64) * sample.dx; 
-       println!("X_i {xi:.6}, phi_i {:.3}, rho_i {:.3}, ef_i {:.3}",
-                *phi_i, *rho_i, *ef_i);
-   }
-   Ok(())
+fn print_field(field :&Field) -> Result<()> {
+    for cell in field.cells.iter() {
+        println!("X_i {:.6}, phi_i {:.3}, rho_i {:.3}, ef_i {:.3}",
+                  cell.x, cell.phi, cell.rho, cell.ef);
+    }
+    Ok(())
 }
 
 
-// could assert that the vectors are all the same length
-fn solvePotentialDirect(dx: f64, phi: &mut Vec<f64>, rho: &Vec<f64>) -> Result<()> {
-   let ni: usize = phi.len();
+fn solve_potential_direct(field : &mut Field) -> Result<()> {
+   let ni: usize = field.len();
    let mut a: Vec<f64> = vec![0.0; ni];  // coef phi[i-1]
    let mut b: Vec<f64> = vec![0.0; ni];  // coef phi[i]
    let mut c: Vec<f64> = vec![0.0; ni];  // coef phi[i+1]
    let mut d: Vec<f64> = vec![0.0; ni];  // rhs
 
    // precompute some common values
-   let inv_sq = 1.0 / (dx * dx);
-   let two_inv_sq = -2.0 / (dx * dx);
+   let inv_sq = 1.0 / (field.dx * field.dx);
+   let two_inv_sq = -2.0 / (field.dx * field.dx);
    
    for i in 0..ni {
       if i == 0 || i == ni-1 {
@@ -105,7 +99,7 @@ fn solvePotentialDirect(dx: f64, phi: &mut Vec<f64>, rho: &Vec<f64>) -> Result<(
          a[i] = inv_sq;
 	 b[i] = two_inv_sq;
 	 c[i] = inv_sq;
-	 d[i] = -rho[i] / EPS0;
+	 d[i] = -field.cells[i].rho / EPS0;
       }
    }
 
@@ -119,42 +113,41 @@ fn solvePotentialDirect(dx: f64, phi: &mut Vec<f64>, rho: &Vec<f64>) -> Result<(
       d[i] = (d[i] - a[i] * d[i-1])/(b[i] - a[i] * c[i-1]);
    }
 
-   phi[ni-1] = d[ni-1];
+   field.cells[ni-1].phi = d[ni-1];
    for i in (0..ni-1).rev() {
-      phi[i] = d[i] - c[i] * phi[i+1];
+      field.cells[i].phi = d[i] - c[i] * field.cells[i+1].phi;
    }
    
    Ok(())   
 }
 
 // want this to return a value indicating successful convergence
-fn solvePotentialGsSOR(dx: f64, phi: &mut Vec<f64>, rho: &Vec<f64>, max_iter: i32) -> Result<i32, String> {
-
+fn solve_potential_gs_sor(field : &mut Field, max_iter: i32) -> Result<i32, String> {
    let mut L2: f64 = 1e12;
    let L2_conv: f64 = 1e-6;
-   let dx2: f64 = dx * dx;
+   let dx2: f64 = field.dx * field.dx;
    let w: f64 = 1.4;  //make this a param?
-   let ni: usize = phi.len();
+   let ni: usize = field.len();
 
    let found = {
       let mut result = None;
       
       for iter in 0..max_iter {
-         phi[0] = 0.0;
-      	 phi[ni-1] = 0.0;
+         field.cells[0].phi = 0.0;
+      	 field.cells[ni-1].phi = 0.0;
 
          for i in 1..(ni-1) {
-            let g: f64 = 0.5 * (phi[i-1] + phi[i+1] + dx2 * rho[i] / EPS0);
-	    phi[i] = phi[i] + w * (g - phi[i]);
+            let g: f64 = 0.5 * (field.cells[i-1].phi + field.cells[i+1].phi + dx2 * field.cells[i].rho / EPS0);
+	    field.cells[i].phi = field.cells[i].phi + w * (g - field.cells[i].phi);
          }
 
          if iter % 50 == 0 {
       	    let mut sum: f64 = 0.0;
 	    for i in 1..(ni-1) {
-	       let res: f64 = -rho[i]/EPS0 - (phi[i-1] - 2.0 * phi[i] + phi[i+1])/dx2;
+	       let res: f64 = -field.cells[i].rho/EPS0 - (field.cells[i-1].phi - 2.0 * field.cells[i].phi + field.cells[i+1].phi)/dx2;
 	       sum += res * res;
 	    }
-	    let L2: f64 = (sum/(ni as f64)).sqrt();
+	    L2 = (sum/(ni as f64)).sqrt();
 	    if L2 < L2_conv {
 	       result = Some(iter);
 	       break;
@@ -180,31 +173,24 @@ fn main() -> Result<()> {
     let ni = 21;
     let x0: f64 = 0.0;
     let xm: f64 = 0.1;
-    let dc: f64 = (xm - x0) / (ni - 1) as f64;
+    let dx: f64 = (xm - x0) / (ni - 1) as f64;
 
-    let mut phi: Vec<f64> = vec![0.0; ni];
-    let mut rho: Vec<f64> = vec![QE*1e12; ni];
-    let mut ef: Vec<f64> = vec![0.0; ni];
+    let mut field = Field::new(ni, x0, dx, QE*1e12); 
 
-    solvePotentialDirect(dc, &mut phi, &rho)?;
-    let s1 = Sample{x0: x0, dx: dc, phi: phi.clone(), rho: rho.clone(), ef: ef.clone()};
-    print_series(&s1);
+    solve_potential_direct(&mut field)?;
+    print_field(&field);
 
-    // reset values for next sovler
-    phi = vec![0.0; ni];
-    rho = vec![QE*1e12; ni];
-    ef = vec![0.0; ni];
-    match solvePotentialGsSOR(dc, &mut phi, &rho, 1000) {
+    field.reset(QE*1e12);
+    
+    match solve_potential_gs_sor(&mut field, 1000) {
        Ok(i) => {
-          let s1 = Sample{x0: x0, dx: dc, phi: phi.clone(), rho: rho.clone(), ef: ef.clone()};
-          print_series(&s1);
+           print_field(&field);
        }
        Err(s) => println!("{s}")
     }
 
-    let s1 = Sample{x0: x0, dx: dc, phi: phi.clone(), rho: rho.clone(), ef: ef.clone()};
-    write_json(&s1, "output.json")?;
-    write_series_json(&s1, "output_series.json")?;
+    write_field_to_json(&field, "output.json")?;
+
     println!("Done writing files");
     Ok(())
     
