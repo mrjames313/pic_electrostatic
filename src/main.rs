@@ -168,6 +168,26 @@ fn solve_potential_gs_sor(field : &mut Field, max_iter: i32) -> Result<i32, Stri
    }
 }
 
+fn compute_EF(field : &mut Field) -> Result <()> {
+    let ni = field.len();
+    let denom = 2.0 * field.dx;
+    
+    for i in (1..ni - 1) {
+        field.cells[i].ef = -(field.cells[i+1].phi - field.cells[i-1].phi) / denom;
+    }
+    // do 2nd order calc at ends as well
+    field.cells[0].ef = (3.0 * field.cells[0].phi
+                         - 4.0 * field.cells[1].phi
+                         + field.cells[2].phi)
+        / denom;
+    field.cells[ni - 1].ef = (-field.cells[ni - 3].phi
+                              + 4.0 * field.cells[ni - 2].phi
+                              - 3.0 * field.cells[ni - 1].phi)
+        / denom;
+    Ok(())
+}
+    
+
 fn main() -> Result<()> {
     println!("Starting execution");
     let ni = 21;
@@ -189,6 +209,9 @@ fn main() -> Result<()> {
        Err(s) => println!("{s}")
     }
 
+    compute_EF(&mut field)?;
+    print_field(&field);
+    
     write_field_to_json(&field, "output.json")?;
 
     println!("Done writing files");
