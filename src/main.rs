@@ -187,7 +187,24 @@ fn compute_EF(field : &mut Field) -> Result <()> {
     Ok(())
 }
     
+fn x_to_l(x: f64, field : &Field) -> Result<f64> {
+    Ok( (x - field.x0) / field.dx )
+}
 
+fn gather_ef(li: f64, field : &Field) -> Result<f64> {
+    let i : usize = li as usize; // should we check that li is non-negative?
+    let di : f64 = li.fract();
+    Ok( field.cells[i].ef * (1.0 - di) + field.cells[i+1].ef * di)
+}
+
+fn gather_phi(li: f64, field : &Field) -> Result<f64> {
+    let i : usize = li as usize; // should we check that li is non-negative?
+    let di : f64 = li.fract();
+    Ok( field.cells[i].phi * (1.0 - di) + field.cells[i+1].phi * di)
+}
+
+
+    
 fn main() -> Result<()> {
     println!("Starting execution");
     let ni = 21;
@@ -213,6 +230,40 @@ fn main() -> Result<()> {
     print_field(&field);
     
     write_field_to_json(&field, "output.json")?;
+
+    // Now simulate a particle (electron) in the field
+    let mut x : f64 = 4.0 * dx; // start 4 cells in
+    let mut v : f64 = 0.0;
+    let mut x_old : f64 = x;
+    let dt : f64 = 1e-10;
+
+    // Get phi_max
+    let phi_max : f64 = field.cells
+        .iter().map(|c| c.phi)
+        .reduce(f64::max).unwrap();
+    
+    // offset velocity by half timestep
+    let mut li : f64 = x_to_l(x, &field)?;
+    let mut ef_p : f64 = gather_ef(li, &field)?;
+    v -= 0.5 * (-QE / ME) * ef_p * dt;
+    
+    for ts in (0..2000) {
+        li = x_to_l(x, &field)?;
+        ef_p = gather_ef(li, &field)?;
+
+        x_old = x;
+        v += (-QE / ME) * ef_p * dt;
+        x += v * dt;
+
+        // now get some other physics data
+        let pi : f64 = x_to_l(0.5 * (x + x_old), &field)?;
+        let phi_p : f64 = gather_phi(pi, &field)?;
+        let ke : f64 = 0.5 * ME * v * v / QE;
+        let pe : f64 = (-QE) * (phi_p - phi_max) / QE; // This is weird, QE and /QE?
+        if ts % 20 == 0 {
+            println!("{ts}, {x}, {v}, {phi_p}, {ke}, {pe}");
+        }
+    }
 
     println!("Done writing files");
     Ok(())
