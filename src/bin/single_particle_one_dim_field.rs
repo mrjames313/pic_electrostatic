@@ -1,22 +1,22 @@
 // external
 use anyhow::Result;
-use plotly::{Plot, Scatter};
-use plotly::common::Mode;
 
 // internal
 use pic_electrostatic::constants::*;
 use pic_electrostatic::one_dim_field::{OneDimFieldInterp,LinearOneDimField};
 use pic_electrostatic::sim::{SingleParticleOneDimTrace, simulate};
-    
+use pic_electrostatic::plot::plot_line_html;
+
 fn main() -> Result<()> {
     println!("Starting execution");
+
+    // ************ Set up the parameters for the field ******************
     let ni = 21;
     let x0: f64 = 0.0;
     let xm: f64 = 0.1;
     let dx: f64 = (xm - x0) / (ni - 1) as f64;
 
     // ****************   Create the field from potentials *************
-    
     let mut field = match LinearOneDimField::new(ni, x0, dx, QE*1e12) {
         Ok(s) => s,
         Err(_) => {
@@ -25,7 +25,7 @@ fn main() -> Result<()> {
         }
     };
 
-    // Just demonstrating a reset of Rho field - not necessary
+    // Demonstrating a reset of Rho field - not necessary
 //    match field.reset(QE*1e12) {
 //        Ok(()) => {},
 //        Err(_) => {
@@ -49,15 +49,10 @@ fn main() -> Result<()> {
     let sim_trace : SingleParticleOneDimTrace = simulate(
         &field, x_init, v_init, dt, loop_iters);
 
-    // make some plots to debug energy
-    let trace = Scatter::new(sim_trace.x_vals, sim_trace.phi_vals)
-        .mode(Mode::Lines)
-        .name("total_e(x)");
-    let mut plot = Plot::new();
-    plot.add_trace(trace);
-    //plot.show();
+    // *********** make plots and print stats ******************
     let path = "/home/ubuntu/plots/plotly_tmp.html";
-    plot.write_html(path);
+    let name = "total_e(x)";
+    plot_line_html(sim_trace.x_vals, sim_trace.phi_vals, name, path);
     
     println!("Min x {}, max x {}, min total energy {}, max total energy {}",
              sim_trace.min_x, sim_trace.max_x,
