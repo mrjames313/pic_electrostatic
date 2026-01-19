@@ -3,7 +3,7 @@ use anyhow::Result;
 
 // internal
 use pic_electrostatic::constants::*;
-use pic_electrostatic::one_dim_field::{OneDimFieldInterp,LinearOneDimField};
+use pic_electrostatic::one_dim_field::{OneDimFieldInterp,LinearOneDimField,CubicOneDimField};
 use pic_electrostatic::sim::{SingleParticleOneDimTrace, simulate};
 use pic_electrostatic::plot::plot_line_html;
 
@@ -17,7 +17,8 @@ fn main() -> Result<()> {
     let dx: f64 = (xm - x0) / (ni - 1) as f64;
 
     // ****************   Create the field from potentials *************
-    let mut field = match LinearOneDimField::new(ni, x0, dx, QE*1e12) {
+    //let mut field = match LinearOneDimField::new(ni, x0, dx, QE*1e12) {
+    let mut field = match CubicOneDimField::new(ni, x0, dx, QE*1e12) {
         Ok(s) => s,
         Err(_) => {
             println!("Failed to create a viable field");
@@ -42,8 +43,8 @@ fn main() -> Result<()> {
     let x_init : f64 = 4.0 * dx; // start 4 cells in
     let v_init : f64 = 0.0;
     let dt : f64 = 1e-10;
-    let loop_iters : usize = 1201;
-    //let loop_iters : usize = 201;
+    let loop_iters : usize = 120001;
+    //let loop_iters : usize = 401;
 
     // looks like the type gets automatically inferred...
     let sim_trace : SingleParticleOneDimTrace = simulate(
@@ -52,7 +53,7 @@ fn main() -> Result<()> {
     // *********** make plots and print stats ******************
     let path = "/home/ubuntu/plots/plotly_tmp.html";
     let name = "total_e(x)";
-    plot_line_html(sim_trace.x_vals, sim_trace.phi_vals, name, path);
+    plot_line_html(sim_trace.x_vals, sim_trace.te_vals, name, path);
     
     println!("Min x {}, max x {}, min total energy {}, max total energy {}",
              sim_trace.min_x, sim_trace.max_x,

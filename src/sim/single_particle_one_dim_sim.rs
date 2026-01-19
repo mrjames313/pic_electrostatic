@@ -83,7 +83,7 @@ where F: crate::one_dim_field::OneDimFieldInterp
 
         trace.update_trace(ts, x, v, phi_p, ke, pe, te);
         if ts % 50 == 0 {
-            println!("{ts}, {x_inter:.4}, {v:.2}, {phi_p:.2}, {ke:.4}, {pe:.4}, {te:.4}");
+            println!("{ts}, {x_inter:.6}, {v:.4}, {phi_p:.4}, {ke:.5}, {pe:.5}, {te:.5}");
         }
     }
     trace
