@@ -194,7 +194,7 @@ impl LinearOneDimField {
 
     // want this to return a value indicating successful convergence
     fn solve_potential_gs_sor(&mut self, max_iter: i32) -> Result<i32, String> {
-        let mut l2: f64;
+        let mut l2: f64 = 1e12;
         let l2_conv: f64 = 1e-6;
         let dx2: f64 = self.dx * self.dx;
         let w: f64 = 1.4;  //make this a param?
