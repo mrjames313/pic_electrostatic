@@ -1,11 +1,10 @@
 # Particle In Cell - Electrostatic model
 
-Simple 1D solver working toward a particle-in-cell (PIC) model
-for plasma simulations.
+Basic (1D) simulator modeling evolution of systems of charged particles (electrostatic) over time. For example, plasma simulations. Uses the particle in cell (PIC) approach to model system state and compute resulting dynamics.
 
 ## Model assumptions
 
-Uses uniform Rho, Diriclet (0V boundary conditions) for electric field model.
+Uses uniform Rho, Dirichlet boundary conditions (0V in this case) for electric field model.
 
 
 ## Sources
